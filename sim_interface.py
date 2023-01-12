@@ -59,6 +59,34 @@ def get_handles():
 
   return
 
+def get_dynamic_obstacles(n: int):
+    
+    global obstacle_handle
+    global obstacle_left_motor_handle
+    global obstacle_right_motor_handle
+    obstacle_handle = [None for i in range(n)]
+    obstacle_left_motor_handle = [None for i in range(n)]
+    obstacle_right_motor_handle = [None for i in range(n)]
+    
+    for i in range(n):
+        # Handle to Obstacles:
+        res , obstacle_handle[i] = sim.simxGetObjectHandle(client_ID, "/Dynamic_obstacles/Pioneer" + str(i), sim.simx_opmode_blocking)
+        res,  obstacle_left_motor_handle[i] = sim.simxGetObjectHandle(client_ID, "/Dynamic_obstacles/Pioneer" + str(i) + "/Pioneer1_left", sim.simx_opmode_blocking)
+        res,  obstacle_right_motor_handle[i] = sim.simxGetObjectHandle(client_ID, "/Dynamic_obstacles/Pioneer" + str(i) + "/Pioneer1_right", sim.simx_opmode_blocking)
+        
+        # Get the position of the Pioneer1 for the first time in streaming mode
+        sim.simxGetObjectPosition(client_ID, obstacle_handle[i], -1 , sim.simx_opmode_streaming)
+        sim.simxGetObjectOrientation(client_ID, obstacle_handle[i], -1 , sim.simx_opmode_streaming)
+        
+        # Stop all joint actuations:Make sure Pioneer1 is stationary:
+        res = sim.simxSetJointTargetVelocity(client_ID, obstacle_left_motor_handle[i], 0, sim.simx_opmode_streaming)
+        res = sim.simxSetJointTargetVelocity(client_ID, obstacle_right_motor_handle[i], 0, sim.simx_opmode_streaming)
+
+    print ("Succesfully obtained obstacle handles for " + "/Dynamic_obstacles/Pioneer" + str(i))
+
+    return
+    
+
 def get_wall_seg(centerPos, length, zAngle):
   #Function to get the end points of a single wall segment
   
@@ -136,7 +164,24 @@ def localize_robot():
   theta  =pioneer_Orientation[2]
   print("robot", x,y,theta)
 
-  return [x,y,theta]       
+  return [x,y,theta]     
+
+def localize_obstacle(index):
+  #Function that will return the current location of Pioneer
+  #PS. THE ORIENTATION WILL BE RETURNED IN RADIANS        
+  global sim
+  global client_ID
+  global obstacle_handle
+  
+  res , obstacle_Position = sim.simxGetObjectPosition(client_ID, obstacle_handle[index], -1 , sim.simx_opmode_buffer)
+  res , obstacle_Orientation = sim.simxGetObjectOrientation(client_ID, obstacle_handle[index], -1 , sim.simx_opmode_buffer)
+  
+  x = obstacle_Position[0]
+  y = obstacle_Position[1]
+  theta  =obstacle_Orientation[2]
+  print("robot" + str(index), x,y,theta)
+
+  return [x,y,theta]     
 
 def get_goal_pose():
   #Function that will return the goal pose
@@ -174,6 +219,27 @@ def setvel_pioneers(V, W):
   # Set velocity
   sim.simxSetJointTargetVelocity(client_ID, pioneer_left_motor_handle, Vl, sim.simx_opmode_oneshot_wait)
   sim.simxSetJointTargetVelocity(client_ID, pioneer_right_motor_handle, Vr, sim.simx_opmode_oneshot_wait)
+  
+  return  
+
+def setvel_obstacle(V, W, index):
+  #Function to set the linear and rotational velocity of pioneers
+  global sim
+  global client_ID
+  global obstacle_left_motor_handle
+  global obstacle_right_motor_handle
+
+  # Limit v,w from controller to +/- of their max
+  w = max(min(W, robot_params.pioneer_max_W), -1.0*robot_params.pioneer_max_W)
+  v = max(min(V, robot_params.pioneer_max_V), -1.0*robot_params.pioneer_max_V)
+          
+  # Compute desired vel_r, vel_l needed to ensure w
+  Vr = ((2.0*v) + (w*robot_params.pioneer_track_width))/(2*robot_params.pioneer_wheel_radius)
+  Vl = ((2.0*v) - (w*robot_params.pioneer_track_width))/(2*robot_params.pioneer_wheel_radius)
+                      
+  # Set velocity
+  sim.simxSetJointTargetVelocity(client_ID, obstacle_left_motor_handle[index], Vr, sim.simx_opmode_oneshot_wait)
+  sim.simxSetJointTargetVelocity(client_ID, obstacle_right_motor_handle[index], Vl, sim.simx_opmode_oneshot_wait)
   
   return  
 
